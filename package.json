@@ -1,0 +1,17 @@
+{
+  "name": "autolabs-attendance",
+  "version": "1.0.0",
+  "description": "AutoLabs 자동 출석체크 스크립트",
+  "main": "attendance.js",
+  "scripts": {
+    "start": "node attendance.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "author": "",
+  "license": "MIT"
+}
