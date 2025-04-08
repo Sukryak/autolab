@@ -2,8 +2,8 @@ name: AutoLabs Attendance Check
 
 on:
   schedule:
-    # 한국 시간 기준 매일 밤 12:00에 실행 (UTC 15:00)
-    - cron: '00 15 * * *'
+    # 한국 시간 기준 매일 밤 11:55에 실행 (UTC 14:55)
+    - cron: '55 14 * * *'
   workflow_dispatch:  # 수동 실행 옵션 추가
 
 jobs:
@@ -13,16 +13,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
-          node-version: '18'
+          python-version: '3.10'
           
       - name: Install dependencies
-        run: npm install axios
-
+        run: pip install requests
+        
       - name: Run attendance script
-        run: node attendance.js
+        run: python attendance.py
         env:
           AUTOLABS_USER_ID: ${{ secrets.AUTOLABS_USER_ID }}
           AUTOLABS_PASSWORD: ${{ secrets.AUTOLABS_PASSWORD }}
