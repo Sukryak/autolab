@@ -2,8 +2,7 @@ name: AutoLabs Attendance Check
 
 on:
   schedule:
-    # 한국 시간 기준 매일 밤 11:55에 실행 (UTC 14:55)
-    - cron: '55 14 * * *'
+    - cron: '00 15 * * *'
   workflow_dispatch:  # 수동 실행 옵션 추가
 
 jobs:
