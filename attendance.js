@@ -22,13 +22,29 @@ async function checkAttendanceSuccess() {
       }
     });
     
-    // 출석체크 성공 여부를 확인하는 로직
-    // 예: 오늘 날짜에 출석체크가 되어있는지 확인
-    const today = new Date();
-    const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    // 디버깅을 위한 로그 출력
+    console.log('출석체크 확인 응답의 일부:');
+    console.log(response.data.slice(0, 1000));
     
-    return response.data.includes(`<td class="today">${dateString}</td>`) && 
-           response.data.includes('출석완료');
+    // 출석체크 성공 여부를 나타내는 메시지들 확인
+    const successMessages = [
+      '출석이 완료되었습니다',
+      '출석은 하루 1회만 참여하실 수 있습니다',
+      '내일 다시 출석해 주세요',
+      '출석완료',
+      '출석체크가 완료되었습니다'
+    ];
+    
+    // 위의 메시지 중 하나라도 포함되어 있다면 성공으로 간주
+    const isSuccess = successMessages.some(message => response.data.includes(message));
+    
+    if (isSuccess) {
+      console.log('출석체크 성공 메시지가 확인되었습니다!');
+    } else {
+      console.log('출석체크 성공 메시지를 찾을 수 없습니다.');
+    }
+    
+    return isSuccess;
   } catch (error) {
     console.error('출석체크 확인 중 오류 발생:', error.message);
     return false;
