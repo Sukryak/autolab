@@ -2,7 +2,7 @@ import os
 import re
 import time
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # 환경변수에서 사용자 ID와 비밀번호 가져오기
 user_id = os.environ.get('AUTOLABS_USER_ID')
@@ -24,6 +24,7 @@ if password:
 
 # 세션 생성
 session = requests.Session()
+csrf_token = None
 
 def get_initial_csrf_token():
     """초기 접속하여 CSRF 토큰 가져오기"""
@@ -136,66 +137,33 @@ def get_server_time():
         print(f"서버 시간 가져오기 오류: {str(e)}")
         return None
 
-def get_time_difference():
-    """서버 시간과 실제 시간의 차이 계산 (초 단위)"""
+def calculate_sleep_time(server_time_str):
+    """서버 시간 기반으로 자정까지 대기 시간 계산 (오토핫키 방식)"""
     try:
-        server_time_str = get_server_time()
-        if not server_time_str:
-            return 0
-        
-        # 서버 시간 파싱 (예: "2024-12-27 00:21:30")
-        server_time_match = re.search(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', server_time_str)
-        if not server_time_match:
+        # 시간 추출 (예: "2024-12-27 00:21:30"에서 시간 부분)
+        time_match = re.search(r'(\d{2}):(\d{2}):(\d{2})', server_time_str)
+        if not time_match:
             print("서버 시간 형식이 올바르지 않습니다.")
             return 0
         
-        server_time = datetime.strptime(server_time_match.group(1), '%Y-%m-%d %H:%M:%S')
-        real_time = datetime.now()
+        hours = int(time_match.group(1))
+        minutes = int(time_match.group(2))
+        seconds = int(time_match.group(3))
         
-        # 시간 차이 계산 (초 단위)
-        time_diff = (real_time - server_time).total_seconds()
-        print(f"서버 시간과 실제 시간의 차이: {time_diff}초")
-        print(f"- 서버 시간: {server_time}")
-        print(f"- 실제 시간: {real_time}")
+        current_seconds = hours * 3600 + minutes * 60 + seconds
         
-        return time_diff
-    except Exception as e:
-        print(f"시간 차이 계산 오류: {str(e)}")
-        return 0
-
-def wait_until_midnight(time_diff):
-    """자정까지 대기 (서버 시간 기준)"""
-    try:
-        # 현재 실제 시간
-        now = datetime.now()
-        
-        # 서버 시간 계산 (실제 시간 - 시간차)
-        server_time = now - timedelta(seconds=time_diff)
-        print(f"현재 서버 시간 (계산): {server_time}")
-        
-        # 다음 날 자정 계산 (서버 시간 기준)
-        next_midnight = datetime(server_time.year, server_time.month, server_time.day) + timedelta(days=1)
-        
-        # 자정까지 남은 시간 (서버 시간 기준)
-        seconds_until_midnight = (next_midnight - server_time).total_seconds()
-        
-        # 실제로 대기해야 할 시간 (실제 시간 기준)
-        real_wait_seconds = max(0, seconds_until_midnight - 10)  # 10초 일찍 시작하여 확실히 자정에 체크하도록
-        
-        print(f"자정까지 남은 시간 (서버 시간 기준): {seconds_until_midnight}초")
-        print(f"실제 대기할 시간: {real_wait_seconds}초")
-        
-        if real_wait_seconds > 0:
-            print(f"{real_wait_seconds}초 동안 대기 중...")
-            time.sleep(real_wait_seconds)
-            return True
+        # 12시간(43200초) 이후라면 다음날 00:00까지 대기
+        if current_seconds > 43200:
+            # 86400은 하루의 총 초
+            sleep_time = (86400 - current_seconds) * 1000
+            print(f"자정까지 대기 시간: {sleep_time / 1000}초")
+            return sleep_time
         else:
-            # 이미 자정이 지났으면 바로 진행
-            print("이미 자정이 지났습니다. 바로 진행합니다.")
-            return True
+            print("현재 시간이 오후가 아니므로 대기하지 않습니다.")
+            return 0
     except Exception as e:
-        print(f"자정 대기 중 오류 발생: {str(e)}")
-        return False
+        print(f"대기 시간 계산 오류: {str(e)}")
+        return 0
 
 def attendance_check(csrf_token):
     """출석체크 시도"""
@@ -300,33 +268,52 @@ def main():
         print(f"실행 시작 시간: {datetime.now()}")
         
         # 1. CSRF 토큰 가져오기
+        global csrf_token
         csrf_token = get_initial_csrf_token()
         if not csrf_token:
             raise Exception("CSRF 토큰 획득 실패")
         
-        # 2. 시간 차이 계산
-        time_diff = get_time_difference()
-        
-        # 3. 로그인
+        # 2. 로그인
         login_success = login(csrf_token)
         if not login_success:
             raise Exception("로그인 실패")
         print("로그인 성공")
         
-        # 4. 자정이 지났는지 확인하고, 아니라면 자정까지 대기
-        now = datetime.now() - timedelta(seconds=time_diff)  # 서버 시간 기준 현재 시간
-        server_hour = now.hour
+        # 3. 서버 시간 가져오기
+        server_time_str = get_server_time()
+        if not server_time_str:
+            raise Exception("서버 시간 획득 실패")
         
-        if server_hour >= 12:  # 서버 시간이 12시 이후라면 자정까지 대기
-            print("서버 시간이 12시 이후입니다. 자정까지 대기합니다.")
-            wait_until_midnight(time_diff)
-        else:
-            print("서버 시간이 12시 이전입니다. 바로 출석체크를 시도합니다.")
+        # 4. 자정까지 대기 시간 계산 (밀리초 단위)
+        sleep_time = calculate_sleep_time(server_time_str)
         
-        # 5. 출석체크 시도 (자정 직후 계속 시도)
+        # 5. 대기가 필요하면 대기
+        if sleep_time > 0:
+            sleep_seconds = sleep_time / 1000
+            print(f"자정까지 {sleep_seconds}초 대기 중...")
+            
+            # 안전을 위해 1초 일찍 깨어남
+            if sleep_seconds > 1:
+                time.sleep(sleep_seconds - 1)
+            
+            print("대기 완료. 서버 시간 다시 확인 중...")
+            
+            # 서버 시간 다시 확인하여 자정이 지났는지 확인
+            new_server_time = get_server_time()
+            if new_server_time:
+                time_match = re.search(r'(\d{2}):(\d{2}):(\d{2})', new_server_time)
+                if time_match:
+                    hours = int(time_match.group(1))
+                    if hours < 12:  # 00:00 ~ 11:59 사이라면 (자정이 지났다면)
+                        print("자정이 지났습니다. 출석체크를 시도합니다.")
+                    else:
+                        print("아직 자정이 되지 않았습니다. 1초 더 대기 후 진행합니다.")
+                        time.sleep(1)
+        
+        # 6. 출석체크 시도 (최대 10번)
         attendance_success = False
-        max_attempts = 30  # 최대 30번 시도 (총 15분)
         attempts = 0
+        max_attempts = 10
         
         while not attendance_success and attempts < max_attempts:
             print(f"출석체크 시도 {attempts + 1}/{max_attempts}")
