@@ -13,7 +13,148 @@ if (!userId || !password) {
 let cookies = '';
 let csrfToken = '';
 
-// 출석체크 성공 여부 확인 함수
+// 서버 시간 가져오기
+async function getServerTime() {
+  try {
+    const response = await axios.get('https://autolabs.co.kr/attendance');
+    const match = response.data.match(/<span id="clock">(.*?)<\/span>/);
+    if (match && match[1]) {
+      return match[1]; // 예: "2024-12-27 00:21:30"
+    }
+    throw new Error('서버 시간을 찾을 수 없습니다.');
+  } catch (error) {
+    console.error('서버 시간 가져오기 오류:', error.message);
+    throw error;
+  }
+}
+
+// 최초 접속 및 CSRF 토큰 가져오기
+async function getInitialCsrfToken() {
+  try {
+    const response = await axios.get('https://autolabs.co.kr/');
+    
+    if (response.headers['set-cookie']) {
+      cookies = response.headers['set-cookie'].join('; ');
+      console.log('초기 쿠키 획득:', cookies);
+    }
+    
+    const match = response.data.match(/csrf-token" content="(.*?)"/);
+    if (match && match[1]) {
+      csrfToken = match[1];
+      return csrfToken;
+    }
+    throw new Error('CSRF 토큰을 찾을 수 없습니다.');
+  } catch (error) {
+    console.error('CSRF 토큰 가져오기 오류:', error.message);
+    throw error;
+  }
+}
+
+// 로그인 성공 여부 확인 함수
+async function checkLoginSuccess() {
+  try {
+    // 메인 페이지 요청
+    const response = await axios.get('https://autolabs.co.kr/', {
+      headers: {
+        'Cookie': cookies
+      }
+    });
+    
+    // 로그인 실패 메시지 확인
+    const loginErrorMessages = [
+      '로그인이 필요합니다',
+      '로그인 후 이용해주세요',
+      '아이디 또는 비밀번호가 일치하지 않습니다'
+    ];
+    
+    const hasLoginError = loginErrorMessages.some(message => response.data.includes(message));
+    
+    // 로그인 성공 메시지 확인 (사용자 이름이나 로그아웃 링크 등)
+    const loginSuccessIndicators = [
+      '로그아웃',
+      'logout',
+      '마이페이지',
+      '내 정보',
+      '프로필'
+    ];
+    
+    const hasLoginSuccess = loginSuccessIndicators.some(indicator => response.data.includes(indicator));
+    
+    // 디버깅을 위한 로그
+    console.log('- 로그인 오류 메시지 포함 여부:', hasLoginError);
+    console.log('- 로그인 성공 지표 포함 여부:', hasLoginSuccess);
+    
+    // 로그인 상태 확인을 위한 추가 정보
+    if (response.data.includes('alert')) {
+      const alertPattern = /<div class="alert[^>]*>([\s\S]*?)<\/div>/g;
+      const alerts = [];
+      let match;
+      while ((match = alertPattern.exec(response.data)) !== null) {
+        alerts.push(match[0]);
+      }
+      if (alerts.length > 0) {
+        console.log('페이지에서 발견된 알림 메시지:', alerts);
+      }
+    }
+    
+    return !hasLoginError && hasLoginSuccess;
+  } catch (error) {
+    console.error('로그인 확인 중 오류 발생:', error.message);
+    return false;
+  }
+}
+
+// 로그인 함수
+async function login() {
+  try {
+    console.log('로그인 시도 중...');
+    console.log(`사용자 ID: ${userId}`);
+    console.log(`비밀번호 길이: ${password.length}자`);
+    
+    const encodedPassword = encodeURIComponent(password);
+    console.log('인코딩된 비밀번호:', encodedPassword);
+    
+    // 로그인 요청 데이터
+    const loginData = `error_return_url=%2F&mid=main&ruleset=%40login&act=procMemberLogin&success_return_url=%2F&user_id=${userId}&password=${encodedPassword}&_rx_csrf_token=${csrfToken}`;
+    console.log('로그인 요청 데이터:', loginData);
+    
+    // 로그인 요청 헤더
+    const loginHeaders = {
+      'Referer': 'https://autolabs.co.kr/',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+      'Cookie': cookies
+    };
+    console.log('로그인 요청 헤더:', JSON.stringify(loginHeaders));
+    
+    // 로그인 요청 전송
+    const response = await axios.post('https://autolabs.co.kr/', loginData, { headers: loginHeaders });
+    
+    // 쿠키 업데이트
+    if (response.headers['set-cookie']) {
+      cookies = response.headers['set-cookie'].join('; ');
+      console.log('쿠키 업데이트됨:', cookies);
+    } else {
+      console.log('응답에 set-cookie 헤더가 없습니다.');
+    }
+    
+    // 로그인 성공 확인
+    console.log('로그인 응답 상태:', response.status);
+    
+    // 로그인 성공 여부 확인 (응답에서 로그인 관련 텍스트 찾기)
+    const loginSuccessCheck = await checkLoginSuccess();
+    console.log('로그인 성공 여부 확인:', loginSuccessCheck);
+    
+    return loginSuccessCheck;
+  } catch (error) {
+    console.error('로그인 중 오류 발생:', error.message);
+    if (error.response) {
+      console.error('오류 응답 상태:', error.response.status);
+    }
+    return false;
+  }
+}
+
 // 출석체크 함수
 async function attendanceCheck() {
   try {
@@ -132,89 +273,6 @@ async function checkAttendanceSuccess() {
   }
 }
 
-// 서버 시간 가져오기
-async function getServerTime() {
-  try {
-    const response = await axios.get('https://autolabs.co.kr/attendance');
-    const match = response.data.match(/<span id="clock">(.*?)<\/span>/);
-    if (match && match[1]) {
-      return match[1]; // 예: "2024-12-27 00:21:30"
-    }
-    throw new Error('서버 시간을 찾을 수 없습니다.');
-  } catch (error) {
-    console.error('서버 시간 가져오기 오류:', error.message);
-    throw error;
-  }
-}
-
-// 최초 접속 및 CSRF 토큰 가져오기
-async function getInitialCsrfToken() {
-  try {
-    const response = await axios.get('https://autolabs.co.kr/');
-    cookies = response.headers['set-cookie'].join('; ');
-    
-    const match = response.data.match(/csrf-token" content="(.*?)"/);
-    if (match && match[1]) {
-      csrfToken = match[1];
-      return csrfToken;
-    }
-    throw new Error('CSRF 토큰을 찾을 수 없습니다.');
-  } catch (error) {
-    console.error('CSRF 토큰 가져오기 오류:', error.message);
-    throw error;
-  }
-}
-
-// 로그인 함수
-async function login() {
-  try {
-    const encodedPassword = encodeURIComponent(password);
-    const response = await axios.post('https://autolabs.co.kr/', 
-      `error_return_url=%2F&mid=main&ruleset=%40login&act=procMemberLogin&success_return_url=%2F&user_id=${userId}&password=${encodedPassword}&_rx_csrf_token=${csrfToken}`,
-      {
-        headers: {
-          'Referer': 'https://autolabs.co.kr/',
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-          'Cookie': cookies
-        }
-      }
-    );
-    
-    // 쿠키 업데이트
-    if (response.headers['set-cookie']) {
-      cookies = response.headers['set-cookie'].join('; ');
-    }
-    
-    return response.status === 200;
-  } catch (error) {
-    console.error('로그인 중 오류 발생:', error.message);
-    return false;
-  }
-}
-
-// 출석체크 함수
-async function attendanceCheck() {
-  try {
-    const response = await axios.post('https://autolabs.co.kr/',
-      `error_return_url=%2F&ruleset=Attendanceinsert&mid=main&act=procAttendanceInsertAttendance&xe_validator_id=modules%2Fattendance%2Fskins%2Fdefault%2Fattendanceinsert&success_return_url=%2F&greetings=&_rx_csrf_token=${csrfToken}`,
-      {
-        headers: {
-          'Referer': 'https://autolabs.co.kr/',
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-          'Cookie': cookies
-        }
-      }
-    );
-    
-    return response.status === 200;
-  } catch (error) {
-    console.error('출석체크 중 오류 발생:', error.message);
-    return false;
-  }
-}
-
 // 서버 시간 기반으로 대기 시간 계산
 async function calculateWaitTime() {
   try {
@@ -254,9 +312,15 @@ function delay(ms) {
 // 메인 함수
 async function main() {
   try {
+    // 환경변수 확인 로그 (비밀번호는 일부만 표시)
+    console.log(`환경변수 확인:`);
+    console.log(`- AUTOLABS_USER_ID: ${userId}`);
+    console.log(`- AUTOLABS_PASSWORD 길이: ${password ? password.length : 0}자`);
+    console.log(`- AUTOLABS_PASSWORD 앞 2자: ${password ? password.substring(0, 2) : 'N/A'}***`);
+    
     // 1. CSRF 토큰 가져오기
     await getInitialCsrfToken();
-    console.log('CSRF 토큰 획득 완료');
+    console.log('CSRF 토큰 획득 완료:', csrfToken);
     
     // 2. 서버 시간 기반으로 대기 시간 계산
     const waitTime = await calculateWaitTime();
