@@ -1,8 +1,8 @@
 const axios = require('axios');
 
 // 환경변수에서 사용자 ID와 비밀번호 가져오기
-const userId = process.env.AUTOLABS_USER_ID;
-const password = process.env.AUTOLABS_PASSWORD;
+const userId = 'bkvcqrtp';
+const password = 'jinho$5767';
 
 if (!userId || !password) {
   console.error('환경변수 AUTOLABS_USER_ID와 AUTOLABS_PASSWORD를 설정해야 합니다.');
@@ -111,11 +111,11 @@ async function login() {
     console.log(`사용자 ID: ${userId}`);
     console.log(`비밀번호 길이: ${password.length}자`);
     
-    const encodedPassword = encodeURIComponent('jinho$5767');
+    const encodedPassword = encodeURIComponent(password);
     console.log('인코딩된 비밀번호:', encodedPassword);
     
     // 로그인 요청 데이터
-    const loginData = `error_return_url=%2F&mid=main&ruleset=%40login&act=procMemberLogin&success_return_url=%2F&user_id=bkvcqrtp&password=${encodedPassword}&_rx_csrf_token=${csrfToken}`;
+    const loginData = `error_return_url=%2F&mid=main&ruleset=%40login&act=procMemberLogin&success_return_url=%2F&user_id=${userID}&password=${encodedPassword}&_rx_csrf_token=${csrfToken}`;
     console.log('로그인 요청 데이터:', loginData);
     
     // 로그인 요청 헤더
