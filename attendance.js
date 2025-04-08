@@ -14,6 +14,43 @@ let cookies = '';
 let csrfToken = '';
 
 // 출석체크 성공 여부 확인 함수
+// 출석체크 함수 수정
+async function attendanceCheck() {
+  try {
+    // 출석체크 페이지 먼저 방문
+    const attendancePageResponse = await axios.get('https://autolabs.co.kr/attendance', {
+      headers: {
+        'Referer': 'https://autolabs.co.kr/',
+        'Cookie': cookies
+      }
+    });
+    
+    console.log('출석체크 페이지 응답 확인:', attendancePageResponse.status);
+    
+    // 실제 출석체크 요청 전송
+    const response = await axios.post('https://autolabs.co.kr/attendance', 
+      `error_return_url=%2F&ruleset=Attendanceinsert&mid=attendance&act=procAttendanceInsertAttendance&success_return_url=%2Fattendance&xe_validator_id=modules%2Fattendance%2Fskins%2Fdefault%2Fattendanceinsert&greetings=&_rx_csrf_token=${csrfToken}`,
+      {
+        headers: {
+          'Referer': 'https://autolabs.co.kr/attendance',
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+          'Cookie': cookies
+        }
+      }
+    );
+    
+    console.log('출석체크 응답 상태:', response.status);
+    console.log('출석체크 응답 리다이렉트:', response.request.res.responseUrl);
+    
+    return response.status === 200;
+  } catch (error) {
+    console.error('출석체크 중 오류 발생:', error.message);
+    return false;
+  }
+}
+
+// 출석체크 성공 확인 함수 수정
 async function checkAttendanceSuccess() {
   try {
     const response = await axios.get('https://autolabs.co.kr/attendance', {
@@ -22,27 +59,29 @@ async function checkAttendanceSuccess() {
       }
     });
     
-    // 디버깅을 위한 로그 출력
-    console.log('출석체크 확인 응답의 일부:');
-    console.log(response.data.slice(0, 1000));
+    // 디버깅을 위해 더 많은 내용을 로그로 출력
+    console.log('출석체크 확인 HTML:');
+    // 특정 키워드를 찾기 위해 필요한 부분만 출력
+    if (response.data.includes('출석')) {
+      // '출석' 키워드 주변 텍스트 찾기
+      const matches = response.data.match(/[^>]*출석[^<]*/g);
+      if (matches) {
+        console.log('출석 관련 텍스트:', matches);
+      }
+    }
     
-    // 출석체크 성공 여부를 나타내는 메시지들 확인
+    // 출석체크 성공 여부를 나타내는 메시지들
     const successMessages = [
       '출석이 완료되었습니다',
-      '출석은 하루 1회만 참여하실 수 있습니다',
+      '출석은 하루 1회만 참여',
       '내일 다시 출석해 주세요',
       '출석완료',
-      '출석체크가 완료되었습니다'
+      '출석체크가 완료',
+      '오늘 출석체크'
     ];
     
-    // 위의 메시지 중 하나라도 포함되어 있다면 성공으로 간주
     const isSuccess = successMessages.some(message => response.data.includes(message));
-    
-    if (isSuccess) {
-      console.log('출석체크 성공 메시지가 확인되었습니다!');
-    } else {
-      console.log('출석체크 성공 메시지를 찾을 수 없습니다.');
-    }
+    console.log('출석체크 성공 여부:', isSuccess);
     
     return isSuccess;
   } catch (error) {
