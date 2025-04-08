@@ -14,10 +14,10 @@ let cookies = '';
 let csrfToken = '';
 
 // 출석체크 성공 여부 확인 함수
-// 출석체크 함수 수정
+// 출석체크 함수
 async function attendanceCheck() {
   try {
-    // 출석체크 페이지 먼저 방문
+    // 출석체크 페이지 먼저 방문하여 새로운 CSRF 토큰 획득
     const attendancePageResponse = await axios.get('https://autolabs.co.kr/attendance', {
       headers: {
         'Referer': 'https://autolabs.co.kr/',
@@ -25,9 +25,14 @@ async function attendanceCheck() {
       }
     });
     
-    console.log('출석체크 페이지 응답 확인:', attendancePageResponse.status);
+    // 출석체크 페이지에서 새로운 CSRF 토큰 추출
+    const pageCsrfMatch = attendancePageResponse.data.match(/csrf-token" content="(.*?)"/);
+    if (pageCsrfMatch && pageCsrfMatch[1]) {
+      csrfToken = pageCsrfMatch[1];
+      console.log('출석체크 페이지에서 새로운 CSRF 토큰 획득:', csrfToken);
+    }
     
-    // 실제 출석체크 요청 전송
+    // 출석체크 요청 전송
     const response = await axios.post('https://autolabs.co.kr/attendance', 
       `error_return_url=%2F&ruleset=Attendanceinsert&mid=attendance&act=procAttendanceInsertAttendance&success_return_url=%2Fattendance&xe_validator_id=modules%2Fattendance%2Fskins%2Fdefault%2Fattendanceinsert&greetings=&_rx_csrf_token=${csrfToken}`,
       {
@@ -40,17 +45,37 @@ async function attendanceCheck() {
       }
     );
     
-    console.log('출석체크 응답 상태:', response.status);
-    console.log('출석체크 응답 리다이렉트:', response.request.res.responseUrl);
+    // 응답 상태 확인
+    console.log('출석체크 요청 응답 상태:', response.status);
+    
+    // 응답에 성공 메시지가 포함되어 있는지 바로 확인
+    const successPattern = '<div class="alert alert-success">';
+    const successMessages = [
+      '출석이 완료되었습니다',
+      '출석은 하루 1회만 참여하실 수 있습니다',
+      '내일 다시 출석해 주세요'
+    ];
+    
+    const hasSuccessPattern = response.data.includes(successPattern);
+    const hasSuccessMessage = successMessages.some(message => response.data.includes(message));
+    
+    if (hasSuccessPattern || hasSuccessMessage) {
+      console.log('출석체크 요청 직후 성공 메시지 확인됨!');
+      return true;
+    }
     
     return response.status === 200;
   } catch (error) {
     console.error('출석체크 중 오류 발생:', error.message);
+    if (error.response) {
+      console.error('오류 응답 상태:', error.response.status);
+      console.error('오류 응답 헤더:', error.response.headers);
+    }
     return false;
   }
 }
 
-// 출석체크 성공 확인 함수 수정
+// 출석체크 성공 확인 함수
 async function checkAttendanceSuccess() {
   try {
     const response = await axios.get('https://autolabs.co.kr/attendance', {
@@ -59,29 +84,46 @@ async function checkAttendanceSuccess() {
       }
     });
     
-    // 디버깅을 위해 더 많은 내용을 로그로 출력
-    console.log('출석체크 확인 HTML:');
-    // 특정 키워드를 찾기 위해 필요한 부분만 출력
-    if (response.data.includes('출석')) {
-      // '출석' 키워드 주변 텍스트 찾기
-      const matches = response.data.match(/[^>]*출석[^<]*/g);
-      if (matches) {
-        console.log('출석 관련 텍스트:', matches);
-      }
-    }
-    
-    // 출석체크 성공 여부를 나타내는 메시지들
+    // 특정 HTML 패턴으로 출석체크 성공 여부 확인
+    const successPattern = '<div class="alert alert-success">';
     const successMessages = [
       '출석이 완료되었습니다',
-      '출석은 하루 1회만 참여',
-      '내일 다시 출석해 주세요',
-      '출석완료',
-      '출석체크가 완료',
-      '오늘 출석체크'
+      '출석은 하루 1회만 참여하실 수 있습니다',
+      '내일 다시 출석해 주세요'
     ];
     
-    const isSuccess = successMessages.some(message => response.data.includes(message));
-    console.log('출석체크 성공 여부:', isSuccess);
+    // 성공 패턴이 있는지 확인
+    const hasSuccessPattern = response.data.includes(successPattern);
+    
+    // 성공 메시지 중 하나라도 포함되어 있는지 확인
+    const hasSuccessMessage = successMessages.some(message => response.data.includes(message));
+    
+    // 디버깅을 위한 로그
+    console.log('출석체크 확인 결과:');
+    console.log('- 성공 패턴 포함 여부:', hasSuccessPattern);
+    console.log('- 성공 메시지 포함 여부:', hasSuccessMessage);
+    
+    // 두 조건 중 하나라도 만족하면 성공으로 간주
+    const isSuccess = hasSuccessPattern || hasSuccessMessage;
+    
+    if (isSuccess) {
+      console.log('출석체크 성공이 확인되었습니다!');
+    } else {
+      console.log('출석체크 성공을 확인할 수 없습니다.');
+      
+      // 디버깅을 위해 응답의 일부 출력
+      if (response.data.includes('alert')) {
+        const alertPattern = /<div class="alert[^>]*>([\s\S]*?)<\/div>/g;
+        const alerts = [];
+        let match;
+        while ((match = alertPattern.exec(response.data)) !== null) {
+          alerts.push(match[0]);
+        }
+        if (alerts.length > 0) {
+          console.log('페이지에서 발견된 알림 메시지:', alerts);
+        }
+      }
+    }
     
     return isSuccess;
   } catch (error) {
